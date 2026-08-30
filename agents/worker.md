@@ -3,7 +3,6 @@ name: worker
 description: Implements tasks from todos - writes code, runs tests, commits with polished messages
 tools: read, bash, write, edit
 deny-tools: claude
-spawning: false
 auto-exit: true
 system-prompt: append
 ---

@@ -108,6 +108,49 @@ for (const backend of backends) {
       }
     });
 
+    // ── Recursive dispatch ──
+
+    it("lets an auto-exit subagent dispatch and await another subagent", async () => {
+      const id = uniqueId();
+      const markerFile = `/tmp/pi-integ-recursive-${id}.txt`;
+      trackTempFile(env, markerFile);
+
+      const surface = createTrackedSurface(env, `recursive-${id}`);
+      await sleep(1000);
+
+      const delegatedTask = `Run: echo 'RECURSIVE_${id}' > '${markerFile}'`;
+      const task = [
+        `Call the subagent tool with these EXACT parameters:`,
+        `  name: "Dispatcher-${id}"`,
+        `  agent: "test-dispatcher"`,
+        `  task: ${JSON.stringify([
+          `Call subagent exactly once with:`,
+          `name: "Nested-${id}"`,
+          `agent: "test-echo"`,
+          `task: ${JSON.stringify(delegatedTask)}`,
+          `Wait for its automatic result, then say RECURSIVE_DISPATCH_COMPLETE.`,
+        ].join("\n"))}`,
+        `Do not create the marker file yourself.`,
+        `After the dispatcher result arrives, say OUTER_RECURSIVE_COMPLETE.`,
+      ].join("\n");
+
+      startPi(surface, env.dir, task);
+
+      const content = await waitForFile(markerFile, PI_TIMEOUT * 2, /RECURSIVE_/);
+      assert.ok(
+        content.includes(`RECURSIVE_${id}`),
+        `Nested marker file should contain RECURSIVE_${id}. Got: ${content.trim()}`,
+      );
+
+      const screen = await waitForScreen(
+        surface,
+        /OUTER_RECURSIVE_COMPLETE|RECURSIVE_DISPATCH_COMPLETE|Sub-agent.*"Dispatcher/i,
+        PI_TIMEOUT * 2,
+        300,
+      );
+      assert.match(screen, /OUTER_RECURSIVE_COMPLETE|RECURSIVE_DISPATCH_COMPLETE|completed/i);
+    });
+
     // ── In-progress activity snapshots ──
 
     it("keeps a long active tool call from surfacing false stalled status", async () => {

@@ -1924,11 +1924,20 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
 
         // Build pi resume command
-        const parts = ["pi", "--session", shellQuote(params.sessionPath)];
+        const parts = [
+          "pi",
+          "--session",
+          shellQuote(params.sessionPath),
+          "--no-extensions",
+        ];
 
-        // Load subagent-done extension so the agent can self-terminate if needed
+        // Guarantee recursive dispatch plus child lifecycle and OpenAI priority tier.
+        const subagentsExtensionPath = join(SUBAGENTS_DIR, "index.ts");
         const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
+        const openaiPriorityPath = join(SUBAGENTS_DIR, "openai-priority.ts");
+        parts.push("-e", shellQuote(subagentsExtensionPath));
         parts.push("-e", shellQuote(subagentDonePath));
+        parts.push("-e", shellQuote(openaiPriorityPath));
 
         const sessionId = ctx.sessionManager.getSessionId();
         const artifactDir = getArtifactDir(ctx.sessionManager.getSessionDir(), sessionId);

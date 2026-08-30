@@ -16,6 +16,7 @@ import {
 } from "../pi-extension/subagents/harness/index.ts";
 import type { ResolvedRuntimePlan } from "../pi-extension/subagents/runtime-routing.ts";
 import type { SubagentResultContext } from "../pi-extension/subagents/harness/types.ts";
+import { applyOpenAIPriorityServiceTier } from "../pi-extension/subagents/openai-priority.ts";
 
 function createMockLaunchContext(overrides?: Partial<SubagentLaunchContext>): SubagentLaunchContext {
   const runtimePlan: ResolvedRuntimePlan = {
@@ -131,10 +132,42 @@ describe("Pi Harness Driver", () => {
     const built = driver.buildCommand(ctx);
 
     assert.equal(built.cli, "pi");
-    assert.ok(built.command.includes("pi --session '/tmp/sessions/subagent.jsonl'"));
+    assert.ok(built.command.includes("pi --session '/tmp/sessions/subagent.jsonl' --no-extensions"));
+    assert.ok(built.command.includes("-e '/path/to/subagents/index.ts'"));
+    assert.ok(built.command.includes("-e '/path/to/subagents/openai-priority.ts'"));
     assert.ok(built.command.includes("--model 'anthropic/claude-sonnet-4-5'"));
     assert.ok(built.command.includes("--thinking 'high'"));
     assert.ok(built.command.includes("echo '__SUBAGENT_DONE_'$?'__'"));
+  });
+});
+
+describe("OpenAI priority child extension", () => {
+  it("forces priority service tier for OpenAI provider payloads", () => {
+    assert.deepEqual(
+      applyOpenAIPriorityServiceTier(
+        { provider: "openai" },
+        { model: "gpt-5.6", service_tier: "auto" },
+      ),
+      { model: "gpt-5.6", service_tier: "priority" },
+    );
+    assert.deepEqual(
+      applyOpenAIPriorityServiceTier(
+        { provider: "openai-codex" },
+        { model: "gpt-5.6-sol" },
+      ),
+      { model: "gpt-5.6-sol", service_tier: "priority" },
+    );
+  });
+
+  it("leaves non-OpenAI and malformed payloads unchanged", () => {
+    assert.equal(
+      applyOpenAIPriorityServiceTier({ provider: "anthropic" }, { model: "claude" }),
+      undefined,
+    );
+    assert.equal(
+      applyOpenAIPriorityServiceTier({ provider: "openai" }, "not-an-object"),
+      undefined,
+    );
   });
 });
 

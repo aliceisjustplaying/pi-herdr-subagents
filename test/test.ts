@@ -1137,6 +1137,7 @@ describe("subagent discovery", () => {
         assert.ok(defs, `expected bundled agent ${name} to be discoverable`);
         assert.equal(defs.model, undefined, `${name} should inherit the parent model`);
         assert.equal(defs.thinking, undefined, `${name} should inherit the parent thinking level`);
+        assert.equal(defs.spawning, undefined, `${name} should permit nested dispatch by default`);
         assert.equal(
           testApi.resolveEffectiveInteractive({ name, task: "" }, defs),
           interactive,
@@ -1218,10 +1219,20 @@ describe("subagent discovery", () => {
     );
   });
 
-  it("buildSubagentToolAllowlist preserves requested tools and adds child control tools", () => {
+  it("buildSubagentToolAllowlist preserves requested tools and nested dispatch", () => {
     assert.equal(
       testApi.buildSubagentToolAllowlist("read,bash,web_search"),
-      "read,bash,web_search,caller_ping,subagent_done",
+      "read,bash,web_search,subagent,subagent_interrupt,subagents_list,subagent_resume,caller_ping,subagent_done",
+    );
+  });
+
+  it("buildSubagentToolAllowlist excludes explicitly denied spawning tools", () => {
+    assert.equal(
+      testApi.buildSubagentToolAllowlist(
+        "read,bash",
+        new Set(["subagent", "subagent_interrupt", "subagents_list", "subagent_resume"]),
+      ),
+      "read,bash,caller_ping,subagent_done",
     );
   });
 
@@ -1487,6 +1498,12 @@ describe("subagent-done.ts", () => {
     it("stays open after Escape aborts the run", () => {
       const messages = [{ role: "assistant", stopReason: "aborted" }];
       assert.equal(shouldAutoExitOnAgentEnd(false, messages), false);
+    });
+
+    it("stays open while recursively dispatched agents or their results are pending", () => {
+      const messages = [{ role: "assistant", stopReason: "stop" }];
+      assert.equal(shouldAutoExitOnAgentEnd(false, messages, 1, false), false);
+      assert.equal(shouldAutoExitOnAgentEnd(false, messages, 0, true), false);
     });
 
     it("still exits when the latest turn ended with stopReason=error", () => {
