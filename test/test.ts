@@ -2104,6 +2104,18 @@ describe("tool registration", () => {
     });
   });
 
+  it("advertises explicit opt-in OpenAI fast-mode dispatch", () => {
+    const { api, registeredTools } = createMockExtensionApi();
+    (subagentsModule as any).default(api);
+
+    const subagent = registeredTools.find((tool) => tool.name === "subagent");
+    assert.ok(subagent);
+    assert.match(subagent.description, /fast: true.*priority/i);
+    const fastSchema = subagent.parameters.properties.fast;
+    assert.equal(fastSchema.type, "boolean");
+    assert.match(fastSchema.description, /omit.*false.*standard.*default/i);
+  });
+
   it("refreshes subagent routing guidance from the live authenticated model registry", () => {
     const { api, registeredTools, eventHandlers } = createMockExtensionApi();
     (subagentsModule as any).default(api);
@@ -2204,7 +2216,7 @@ describe("tool registration", () => {
     assert.match(output, /\(unnamed\)/);
   });
 
-  it("registers subagent_resume with an autoExit override", () => {
+  it("registers subagent_resume with auto-exit and fast-mode overrides", () => {
     const { api, registeredTools } = createMockExtensionApi();
     (subagentsModule as any).default(api);
 
@@ -2214,6 +2226,10 @@ describe("tool registration", () => {
     const autoExitSchema = resumeTool.parameters.properties.autoExit;
     assert.equal(autoExitSchema.type, "boolean");
     assert.match(autoExitSchema.description, /Defaults to true/);
+
+    const fastSchema = resumeTool.parameters.properties.fast;
+    assert.equal(fastSchema.type, "boolean");
+    assert.match(fastSchema.description, /true.*priority.*omit.*false.*standard/i);
   });
 });
 

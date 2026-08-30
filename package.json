@@ -1,7 +1,7 @@
 {
   "name": "pi-herdr-subagents",
   "version": "0.2.0",
-  "description": "Recursive priority-tier subagents for pi running in herdr",
+  "description": "Recursive subagents with optional priority-tier dispatch for pi running in herdr",
   "keywords": [
     "pi-package"
   ],
@@ -25,7 +25,8 @@
   },
   "pi": {
     "extensions": [
-      "./pi-extension/subagents/index.ts"
+      "./pi-extension/subagents/index.ts",
+      "./pi-extension/subagents/openai-priority.ts"
     ]
   },
   "devDependencies": {

@@ -21,6 +21,10 @@ export function shouldIsolateChildExtensions(
   return value === "1";
 }
 
+export function resolveChildOpenAIServiceTier(fast: boolean | undefined): "default" | "priority" {
+  return fast === true ? "priority" : "default";
+}
+
 export function buildSubagentToolAllowlist(
   effectiveTools?: string,
   deniedTools: ReadonlySet<string> = new Set(),
@@ -100,16 +104,19 @@ export class PiHarnessDriver implements HarnessDriver {
 
     const parts: string[] = ["pi"];
     parts.push("--session", shellQuote(subagentSessionFile));
-    if (shouldIsolateChildExtensions()) {
+    const isolateChildExtensions = shouldIsolateChildExtensions();
+    if (isolateChildExtensions) {
       parts.push("--no-extensions");
     }
 
     const subagentsExtensionPath = join(subagentsDir, "index.ts");
     const subagentDonePath = join(subagentsDir, "subagent-done.ts");
-    const openaiPriorityPath = join(subagentsDir, "openai-priority.ts");
     parts.push("-e", shellQuote(subagentsExtensionPath));
     parts.push("-e", shellQuote(subagentDonePath));
-    parts.push("-e", shellQuote(openaiPriorityPath));
+    if (isolateChildExtensions) {
+      const openaiPriorityPath = join(subagentsDir, "openai-priority.ts");
+      parts.push("-e", shellQuote(openaiPriorityPath));
+    }
 
     if (effectiveModel) {
       parts.push("--model", shellQuote(effectiveModel));
@@ -149,6 +156,9 @@ export class PiHarnessDriver implements HarnessDriver {
     if (denySet && denySet.size > 0) {
       envParts.push(`PI_DENY_TOOLS=${shellQuote([...denySet].join(","))}`);
     }
+    envParts.push(
+      `PI_SUBAGENT_OPENAI_SERVICE_TIER=${shellQuote(resolveChildOpenAIServiceTier(params.fast))}`,
+    );
     envParts.push(`PI_SUBAGENT_NAME=${shellQuote(params.name)}`);
     if (params.agent) {
       envParts.push(`PI_SUBAGENT_AGENT=${shellQuote(params.agent)}`);

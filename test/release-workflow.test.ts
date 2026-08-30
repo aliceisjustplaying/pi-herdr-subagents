@@ -2,6 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+test("package loads the child service-tier override after the subagent extension", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+
+  assert.deepEqual(manifest.pi.extensions, [
+    "./pi-extension/subagents/index.ts",
+    "./pi-extension/subagents/openai-priority.ts",
+  ]);
+});
+
 test("release workflow reacts to package version changes and creates all release artifacts", async () => {
   const workflow = await readFile(".github/workflows/publish.yml", "utf8");
 

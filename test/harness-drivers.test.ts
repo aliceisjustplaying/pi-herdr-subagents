@@ -13,11 +13,15 @@ import {
   GrokHarnessDriver,
   GenericHarnessDriver,
   shouldIsolateChildExtensions,
+  resolveChildOpenAIServiceTier,
   type SubagentLaunchContext,
 } from "../pi-extension/subagents/harness/index.ts";
 import type { ResolvedRuntimePlan } from "../pi-extension/subagents/runtime-routing.ts";
 import type { SubagentResultContext } from "../pi-extension/subagents/harness/types.ts";
-import { applyOpenAIPriorityServiceTier } from "../pi-extension/subagents/openai-priority.ts";
+import openAIServiceTierExtension, {
+  applyOpenAIServiceTier,
+  resolveOpenAIServiceTier,
+} from "../pi-extension/subagents/openai-priority.ts";
 
 function createMockLaunchContext(overrides?: Partial<SubagentLaunchContext>): SubagentLaunchContext {
   const runtimePlan: ResolvedRuntimePlan = {
@@ -136,46 +140,119 @@ describe("Pi Harness Driver", () => {
     assert.ok(built.command.includes("pi --session '/tmp/sessions/subagent.jsonl'"));
     assert.ok(!built.command.includes("--no-extensions"));
     assert.ok(built.command.includes("-e '/path/to/subagents/index.ts'"));
-    assert.ok(built.command.includes("-e '/path/to/subagents/openai-priority.ts'"));
+    assert.ok(!built.command.includes("-e '/path/to/subagents/openai-priority.ts'"));
+    assert.ok(built.command.includes("PI_SUBAGENT_OPENAI_SERVICE_TIER='default'"));
     assert.ok(built.command.includes("--model 'anthropic/claude-sonnet-4-5'"));
     assert.ok(built.command.includes("--thinking 'high'"));
     assert.ok(built.command.includes("echo '__SUBAGENT_DONE_'$?'__'"));
+  });
+
+  it("opts into OpenAI priority tier only when fast is true", () => {
+    assert.equal(resolveChildOpenAIServiceTier(undefined), "default");
+    assert.equal(resolveChildOpenAIServiceTier(false), "default");
+    assert.equal(resolveChildOpenAIServiceTier(true), "priority");
+
+    const built = driver.buildCommand(createMockLaunchContext({
+      params: {
+        id: "abc12345",
+        name: "fast-worker",
+        task: "Analyze the repository structure",
+        fast: true,
+      },
+    }));
+
+    assert.ok(built.command.includes("PI_SUBAGENT_OPENAI_SERVICE_TIER='priority'"));
+    assert.ok(!built.command.includes("PI_SUBAGENT_OPENAI_SERVICE_TIER='default'"));
   });
 
   it("supports isolated working-tree child extension tests", () => {
     assert.equal(shouldIsolateChildExtensions("1"), true);
     assert.equal(shouldIsolateChildExtensions("0"), false);
     assert.equal(shouldIsolateChildExtensions(undefined), false);
+
+    const previous = process.env.PI_SUBAGENT_ISOLATE_EXTENSIONS;
+    process.env.PI_SUBAGENT_ISOLATE_EXTENSIONS = "1";
+    try {
+      const built = driver.buildCommand(createMockLaunchContext());
+      assert.ok(built.command.includes("--no-extensions"));
+      assert.ok(built.command.includes("-e '/path/to/subagents/openai-priority.ts'"));
+    } finally {
+      if (previous === undefined) delete process.env.PI_SUBAGENT_ISOLATE_EXTENSIONS;
+      else process.env.PI_SUBAGENT_ISOLATE_EXTENSIONS = previous;
+    }
   });
 });
 
-describe("OpenAI priority child extension", () => {
-  it("forces priority service tier for OpenAI provider payloads", () => {
+describe("OpenAI child service-tier extension", () => {
+  it("forces the explicitly selected standard or priority tier", () => {
     assert.deepEqual(
-      applyOpenAIPriorityServiceTier(
+      applyOpenAIServiceTier(
         { provider: "openai" },
-        { model: "gpt-5.6", service_tier: "auto" },
+        { model: "gpt-5.6", service_tier: "priority" },
+        "default",
       ),
-      { model: "gpt-5.6", service_tier: "priority" },
+      { model: "gpt-5.6", service_tier: "default" },
     );
     assert.deepEqual(
-      applyOpenAIPriorityServiceTier(
+      applyOpenAIServiceTier(
         { provider: "openai-codex" },
         { model: "gpt-5.6-sol" },
+        "priority",
       ),
       { model: "gpt-5.6-sol", service_tier: "priority" },
     );
   });
 
+  it("accepts only explicit child service-tier configuration", () => {
+    assert.equal(resolveOpenAIServiceTier("priority"), "priority");
+    assert.equal(resolveOpenAIServiceTier("default"), "default");
+    assert.equal(resolveOpenAIServiceTier(undefined), undefined);
+    assert.equal(resolveOpenAIServiceTier("garbage"), undefined);
+  });
+
   it("leaves non-OpenAI and malformed payloads unchanged", () => {
     assert.equal(
-      applyOpenAIPriorityServiceTier({ provider: "anthropic" }, { model: "claude" }),
+      applyOpenAIServiceTier({ provider: "anthropic" }, { model: "claude" }, "default"),
       undefined,
     );
     assert.equal(
-      applyOpenAIPriorityServiceTier({ provider: "openai" }, "not-an-object"),
+      applyOpenAIServiceTier({ provider: "openai" }, "not-an-object", "priority"),
       undefined,
     );
+  });
+
+  it("overrides a globally enabled fast-mode hook when loaded after it", () => {
+    const handlers = new Map<string, Array<Function>>();
+    const pi = {
+      on(event: string, handler: Function) {
+        const registered = handlers.get(event) ?? [];
+        registered.push(handler);
+        handlers.set(event, registered);
+      },
+    };
+
+    pi.on("before_provider_request", (event: any) => ({
+      ...event.payload,
+      service_tier: "priority",
+    }));
+    openAIServiceTierExtension(pi as any);
+    assert.equal(handlers.get("before_provider_request")?.length, 2);
+
+    const previousTier = process.env.PI_SUBAGENT_OPENAI_SERVICE_TIER;
+    process.env.PI_SUBAGENT_OPENAI_SERVICE_TIER = "default";
+    try {
+      let payload: unknown = { model: "gpt-5.6-sol" };
+      for (const handler of handlers.get("before_provider_request") ?? []) {
+        payload = handler(
+          { payload },
+          { model: { provider: "openai-codex" } },
+        ) ?? payload;
+      }
+      assert.deepEqual(payload, { model: "gpt-5.6-sol", service_tier: "default" });
+    } finally {
+      if (previousTier === undefined) delete process.env.PI_SUBAGENT_OPENAI_SERVICE_TIER;
+      else process.env.PI_SUBAGENT_OPENAI_SERVICE_TIER = previousTier;
+    }
   });
 });
 

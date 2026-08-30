@@ -1,6 +1,6 @@
 # pi-herdr-subagents
 
-Async subagents for [pi](https://github.com/badlogic/pi-mono) running exclusively in [herdr](https://herdr.dev). Spawn, orchestrate, and manage recursive sub-agent sessions in dedicated herdr tabs or panes. **Fully non-blocking** — the main agent keeps working while subagents run in the background. Pi-backed children automatically send OpenAI and OpenAI-Codex requests with `service_tier: "priority"`.
+Async subagents for [pi](https://github.com/badlogic/pi-mono) running exclusively in [herdr](https://herdr.dev). Spawn, orchestrate, and manage recursive sub-agent sessions in dedicated herdr tabs or panes. **Fully non-blocking** — the main agent keeps working while subagents run in the background. Pi-backed OpenAI and OpenAI-Codex children use the standard service tier by default and can opt into priority processing per dispatch with `fast: true`.
 
 ## How It Works
 
@@ -439,11 +439,19 @@ subagent({ name: "Scout", agent: "scout", interactive: true, task: "..." });
 
 ---
 
-## Recursive Dispatch and OpenAI Priority
+## Recursive Dispatch and OpenAI Service Tiers
 
 By default, every bundled Pi sub-agent can spawn further sub-agents. Native-tool allowlists such as `tools: read, bash` automatically retain `subagent`, `subagent_interrupt`, `subagents_list`, and `subagent_resume`, so limiting coding tools does not accidentally disable delegation.
 
-Every fresh or resumed Pi child loads a child-only request hook that adds `service_tier: "priority"` for the `openai` and `openai-codex` providers. Because each nested child launches through the same driver, the behavior applies at every dispatch depth. Other providers and non-Pi harnesses are unchanged.
+Fresh and resumed Pi children use `service_tier: "default"` for the `openai` and `openai-codex` providers unless the dispatch explicitly sets `fast: true`. This per-dispatch choice overrides an enabled global Fast Mode extension:
+
+```typescript
+subagent({ name: "Normal", agent: "worker", task: "..." });
+subagent({ name: "Fast", agent: "worker", fast: true, task: "..." });
+subagent_resume({ sessionPath: "...", fast: true });
+```
+
+Nested Pi dispatches make the same independent choice at every depth. Other providers and non-Pi harnesses ignore `fast`.
 
 Control recursive dispatch with frontmatter:
 

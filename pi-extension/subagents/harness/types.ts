@@ -9,6 +9,7 @@ export interface SubagentLaunchParams {
   cwd?: string;
   systemPrompt?: string;
   resumeSessionId?: string;
+  fast?: boolean;
   tools?: string;
   skills?: string;
   interactive?: boolean;

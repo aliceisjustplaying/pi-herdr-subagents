@@ -39,6 +39,7 @@ import {
   buildSubagentToolAllowlist,
   buildPiPromptArgs,
   shouldIsolateChildExtensions,
+  resolveChildOpenAIServiceTier,
 } from "./harness/index.ts";
 import { loadModelConfig, resolveModelDefault, type ModelConfig } from "./model-config.ts";
 
@@ -128,6 +129,9 @@ const ThinkingLevelSchema = Type.Union(
   },
 );
 
+const OPENAI_FAST_MODE_GUIDANCE =
+  'For Pi-backed OpenAI or OpenAI-Codex subagents, set fast: true to opt into service_tier: "priority" (fast mode). Omit fast or set it to false to force the standard service_tier: "default". ';
+
 const SubagentParams = Type.Object({
   name: Type.String({ description: "Display name for the subagent" }),
   task: Type.String({ description: "Task/prompt for the sub-agent" }),
@@ -144,6 +148,12 @@ const SubagentParams = Type.Object({
     Type.String({
       description:
         "Exact authenticated provider/model-id. Omit to use a named agent's model default, then the configured or parent model. Passing a value explicitly overrides agent frontmatter for this spawn.",
+    }),
+  ),
+  fast: Type.Optional(
+    Type.Boolean({
+      description:
+        'Opt into OpenAI priority processing for this Pi-backed subagent. Set true for service_tier: "priority". Omit or set false to force the standard service_tier: "default". Ignored by non-Pi or non-OpenAI runtimes.',
     }),
   ),
   thinking: Type.Optional(ThinkingLevelSchema),
@@ -1485,6 +1495,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       label: "Subagent",
       description:
         "Spawn a sub-agent in a dedicated terminal herdr pane. " +
+        OPENAI_FAST_MODE_GUIDANCE +
         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
         "When the sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT call subagents_list or any other tool to 'check' status. All of that is wasted work — the harness handles delivery for you. " +
@@ -1492,6 +1503,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         "After spawning, either end your turn immediately, or work on other independent tasks (including spawning more subagents in parallel). The harness will wake you with the result when it is ready.",
       promptSnippet:
         "Spawn a sub-agent in a dedicated terminal herdr pane. " +
+        OPENAI_FAST_MODE_GUIDANCE +
         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
         "When the sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT call subagents_list or any other tool to 'check' status. All of that is wasted work — the harness handles delivery for you. " +
@@ -1837,6 +1849,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       label: "Resume Subagent",
       description:
         "Resume a previous sub-agent session in a new herdr pane. " +
+        OPENAI_FAST_MODE_GUIDANCE +
         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
         "When the resumed sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT poll for status. All of that is wasted work — the harness handles delivery for you. " +
@@ -1844,6 +1857,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         "Use when a sub-agent was cancelled or needs follow-up work.",
       promptSnippet:
         "Resume a previous sub-agent session in a new herdr pane. " +
+        OPENAI_FAST_MODE_GUIDANCE +
         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
         "When the resumed sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT poll for status. All of that is wasted work — the harness handles delivery for you. " +
@@ -1863,6 +1877,12 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           Type.Boolean({
             description:
               "Whether the resumed session should automatically exit after completing its response. Defaults to true for autonomous follow-up work; set false for interactive resumed sessions.",
+          }),
+        ),
+        fast: Type.Optional(
+          Type.Boolean({
+            description:
+              'Opt into OpenAI priority processing for this resumed Pi session. Set true for service_tier: "priority". Omit or set false to force the standard service_tier: "default".',
           }),
         ),
       }),
@@ -1926,17 +1946,22 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
         // Build pi resume command
         const parts = ["pi", "--session", shellQuote(params.sessionPath)];
-        if (shouldIsolateChildExtensions()) {
+        const isolateChildExtensions = shouldIsolateChildExtensions();
+        if (isolateChildExtensions) {
           parts.push("--no-extensions");
         }
 
-        // Guarantee recursive dispatch plus child lifecycle and OpenAI priority tier.
+        // Guarantee recursive dispatch and child lifecycle. Normal package loading
+        // supplies the per-dispatch OpenAI tier override after global Fast Mode;
+        // isolated runs must load that override explicitly.
         const subagentsExtensionPath = join(SUBAGENTS_DIR, "index.ts");
         const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
-        const openaiPriorityPath = join(SUBAGENTS_DIR, "openai-priority.ts");
         parts.push("-e", shellQuote(subagentsExtensionPath));
         parts.push("-e", shellQuote(subagentDonePath));
-        parts.push("-e", shellQuote(openaiPriorityPath));
+        if (isolateChildExtensions) {
+          const openaiPriorityPath = join(SUBAGENTS_DIR, "openai-priority.ts");
+          parts.push("-e", shellQuote(openaiPriorityPath));
+        }
 
         const sessionId = ctx.sessionManager.getSessionId();
         const artifactDir = getArtifactDir(ctx.sessionManager.getSessionDir(), sessionId);
@@ -1966,6 +1991,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         if (process.env.PI_CODING_AGENT_DIR) {
           resumeEnvParts.push(`PI_CODING_AGENT_DIR=${shellQuote(process.env.PI_CODING_AGENT_DIR)}`);
         }
+        resumeEnvParts.push(
+          `PI_SUBAGENT_OPENAI_SERVICE_TIER=${shellQuote(resolveChildOpenAIServiceTier(params.fast))}`,
+        );
         resumeEnvParts.push(`PI_SUBAGENT_NAME=${shellQuote(name)}`);
         resumeEnvParts.push(`PI_SUBAGENT_SESSION=${shellQuote(params.sessionPath)}`);
         resumeEnvParts.push(`PI_SUBAGENT_ID=${shellQuote(id)}`);
