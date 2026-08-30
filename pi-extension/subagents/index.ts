@@ -38,6 +38,7 @@ import {
   getHarnessDriver,
   buildSubagentToolAllowlist,
   buildPiPromptArgs,
+  shouldIsolateChildExtensions,
 } from "./harness/index.ts";
 import { loadModelConfig, resolveModelDefault, type ModelConfig } from "./model-config.ts";
 
@@ -1924,12 +1925,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
 
         // Build pi resume command
-        const parts = [
-          "pi",
-          "--session",
-          shellQuote(params.sessionPath),
-          "--no-extensions",
-        ];
+        const parts = ["pi", "--session", shellQuote(params.sessionPath)];
+        if (shouldIsolateChildExtensions()) {
+          parts.push("--no-extensions");
+        }
 
         // Guarantee recursive dispatch plus child lifecycle and OpenAI priority tier.
         const subagentsExtensionPath = join(SUBAGENTS_DIR, "index.ts");

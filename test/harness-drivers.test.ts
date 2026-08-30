@@ -12,6 +12,7 @@ import {
   CodexHarnessDriver,
   GrokHarnessDriver,
   GenericHarnessDriver,
+  shouldIsolateChildExtensions,
   type SubagentLaunchContext,
 } from "../pi-extension/subagents/harness/index.ts";
 import type { ResolvedRuntimePlan } from "../pi-extension/subagents/runtime-routing.ts";
@@ -132,12 +133,19 @@ describe("Pi Harness Driver", () => {
     const built = driver.buildCommand(ctx);
 
     assert.equal(built.cli, "pi");
-    assert.ok(built.command.includes("pi --session '/tmp/sessions/subagent.jsonl' --no-extensions"));
+    assert.ok(built.command.includes("pi --session '/tmp/sessions/subagent.jsonl'"));
+    assert.ok(!built.command.includes("--no-extensions"));
     assert.ok(built.command.includes("-e '/path/to/subagents/index.ts'"));
     assert.ok(built.command.includes("-e '/path/to/subagents/openai-priority.ts'"));
     assert.ok(built.command.includes("--model 'anthropic/claude-sonnet-4-5'"));
     assert.ok(built.command.includes("--thinking 'high'"));
     assert.ok(built.command.includes("echo '__SUBAGENT_DONE_'$?'__'"));
+  });
+
+  it("supports isolated working-tree child extension tests", () => {
+    assert.equal(shouldIsolateChildExtensions("1"), true);
+    assert.equal(shouldIsolateChildExtensions("0"), false);
+    assert.equal(shouldIsolateChildExtensions(undefined), false);
   });
 });
 

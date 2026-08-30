@@ -15,6 +15,12 @@ const SUBAGENT_SPAWNING_TOOLS = [
   "subagent_resume",
 ] as const;
 
+export function shouldIsolateChildExtensions(
+  value = process.env.PI_SUBAGENT_ISOLATE_EXTENSIONS,
+): boolean {
+  return value === "1";
+}
+
 export function buildSubagentToolAllowlist(
   effectiveTools?: string,
   deniedTools: ReadonlySet<string> = new Set(),
@@ -94,9 +100,9 @@ export class PiHarnessDriver implements HarnessDriver {
 
     const parts: string[] = ["pi"];
     parts.push("--session", shellQuote(subagentSessionFile));
-    // Explicitly load the child extension set so an installed parent version cannot
-    // register the same tools first and prevent this version from starting.
-    parts.push("--no-extensions");
+    if (shouldIsolateChildExtensions()) {
+      parts.push("--no-extensions");
+    }
 
     const subagentsExtensionPath = join(subagentsDir, "index.ts");
     const subagentDonePath = join(subagentsDir, "subagent-done.ts");
