@@ -260,6 +260,9 @@ export function startPi(
   // against whatever version is checked out under `~/.pi/agent/git/...`.
   const cmd = [
     `cd ${shellQuote(testDir)} &&`,
+    // Keep every recursively launched test child on working-tree sources. A
+    // developer may have another package snapshot installed globally.
+    `PI_SUBAGENT_ISOLATE_EXTENSIONS=1`,
     `pi`,
     `-ne`,
     `-e ${shellQuote(EXTENSION_SOURCE)}`,
