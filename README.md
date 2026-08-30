@@ -1,6 +1,6 @@
 # pi-herdr-subagents
 
-Async subagents for [pi](https://github.com/badlogic/pi-mono) running exclusively in [herdr](https://herdr.dev). Spawn, orchestrate, and manage sub-agent sessions in dedicated herdr tabs or panes. **Fully non-blocking** — the main agent keeps working while subagents run in the background.
+Async subagents for [pi](https://github.com/badlogic/pi-mono) running exclusively in [herdr](https://herdr.dev). Spawn, orchestrate, and manage recursive sub-agent sessions in dedicated herdr tabs or panes. **Fully non-blocking** — the main agent keeps working while subagents run in the background. Pi-backed children automatically send OpenAI and OpenAI-Codex requests with `service_tier: "priority"`.
 
 ## How It Works
 
@@ -42,10 +42,10 @@ The full suite launches real Pi sessions and can take several minutes. `PI_TEST_
 
 ## Install
 
-Install the package from npm:
+Install this fork from GitHub:
 
 ```bash
-pi install npm:pi-herdr-subagents
+pi install git:github.com/aliceisjustplaying/pi-herdr-subagents
 ```
 
 This project does not install or load `HazAT/pi-interactive-subagents` automatically.
@@ -97,6 +97,8 @@ Subagent tabs and panes are created without stealing keyboard focus. Launch comm
 | **worker**        | Config, then parent   | Implements tasks from todos — writes code, runs tests, makes polished commits            |
 | **reviewer**      | Config, then parent   | Reviews code for bugs, security issues, correctness                                      |
 | **visual-tester** | Config, then parent   | Visual QA via Chrome CDP — screenshots, responsive testing, interaction testing          |
+
+All bundled Pi agents can recursively dispatch other agents. Explicit native-tool allowlists retain the four subagent lifecycle tools unless agent frontmatter denies them with `spawning: false` or `deny-tools`.
 
 Bundled agents use model defaults from `config.json` when configured; otherwise they inherit the parent model. Thinking defaults still come from agent frontmatter or the parent level. For a named agent, callers should omit `model` and `thinking` so those configured defaults apply. Passing either field explicitly is a one-off override and takes precedence over agent frontmatter.
 
@@ -437,9 +439,13 @@ subagent({ name: "Scout", agent: "scout", interactive: true, task: "..." });
 
 ---
 
-## Tool Access Control
+## Recursive Dispatch and OpenAI Priority
 
-By default, every sub-agent can spawn further sub-agents. Control this with frontmatter:
+By default, every bundled Pi sub-agent can spawn further sub-agents. Native-tool allowlists such as `tools: read, bash` automatically retain `subagent`, `subagent_interrupt`, `subagents_list`, and `subagent_resume`, so limiting coding tools does not accidentally disable delegation.
+
+Every fresh or resumed Pi child loads a child-only request hook that adds `service_tier: "priority"` for the `openai` and `openai-codex` providers. Because each nested child launches through the same driver, the behavior applies at every dispatch depth. Other providers and non-Pi harnesses are unchanged.
+
+Control recursive dispatch with frontmatter:
 
 ### `spawning: false`
 
@@ -463,15 +469,7 @@ deny-tools: subagent
 ---
 ```
 
-### Recommended Configuration
-
-| Agent      | `spawning`  | Rationale                                    |
-| ---------- | ----------- | -------------------------------------------- |
-| planner    | _(default)_ | Legitimately spawns scouts for investigation |
-| worker     | `false`     | Should implement tasks, not delegate         |
-| researcher | `false`     | Should research, not spawn                   |
-| reviewer   | `false`     | Should review, not spawn                     |
-| scout      | `false`     | Should gather context, not spawn             |
+Use `spawning: false` for roles that must complete work directly or when you want to prevent recursive fan-out.
 
 ---
 

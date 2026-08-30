@@ -16,7 +16,13 @@ export function shouldMarkUserTookOver(agentStarted: boolean): boolean {
 export function shouldAutoExitOnAgentEnd(
   _userTookOver: boolean,
   messages: any[] | undefined,
+  pendingSubagentCount = 0,
+  hasPendingMessages = false,
 ): boolean {
+  // Keep recursive orchestrators alive until every child result has been
+  // delivered and processed in a follow-up turn.
+  if (pendingSubagentCount > 0 || hasPendingMessages) return false;
+
   // Manual input should not strand an auto-exit subagent. If the latest agent
   // turn completed normally, close the session. Escape/abort still leaves it
   // open for inspection or another prompt.
@@ -73,6 +79,11 @@ export function buildCompletionSidecar(messages: any[] | undefined):
   | { type: "error"; errorMessage: string; stopReason: "error" } {
   const errorInfo = findLatestAssistantError(messages);
   return errorInfo ? { type: "error", ...errorInfo } : { type: "done" };
+}
+
+export function getPendingSubagentCount(): number {
+  const runtime = (globalThis as any)[Symbol.for("pi-subagents/runtime")];
+  return runtime?.runningSubagents instanceof Map ? runtime.runningSubagents.size : 0;
 }
 
 export function parseDeniedTools(rawValue: string | undefined): string[] {
@@ -189,7 +200,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("agent_settled", (_event, ctx) => {
     const shouldExit = autoExit
-      && shouldAutoExitOnAgentEnd(userTookOver, latestAgentMessages);
+      && shouldAutoExitOnAgentEnd(
+        userTookOver,
+        latestAgentMessages,
+        getPendingSubagentCount(),
+        ctx.hasPendingMessages?.() === true,
+      );
 
     if (shouldExit) {
       // Surface stopReason: "error" turns (auto-retry exhausted, provider

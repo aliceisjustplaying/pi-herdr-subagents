@@ -1,7 +1,7 @@
 {
   "name": "pi-herdr-subagents",
   "version": "0.2.0",
-  "description": "Interactive subagents for pi running in herdr",
+  "description": "Recursive priority-tier subagents for pi running in herdr",
   "keywords": [
     "pi-package"
   ],
@@ -9,7 +9,7 @@
   "author": "0xRichardH",
   "repository": {
     "type": "git",
-    "url": "https://github.com/0xRichardH/pi-herdr-subagents"
+    "url": "https://github.com/aliceisjustplaying/pi-herdr-subagents"
   },
   "type": "module",
   "scripts": {

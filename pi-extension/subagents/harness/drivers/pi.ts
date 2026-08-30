@@ -8,8 +8,17 @@ import type {
 import type { ResolvedRuntimePlan } from "../../runtime-routing.ts";
 
 const SUBAGENT_CONTROL_TOOLS = ["caller_ping", "subagent_done"] as const;
+const SUBAGENT_SPAWNING_TOOLS = [
+  "subagent",
+  "subagent_interrupt",
+  "subagents_list",
+  "subagent_resume",
+] as const;
 
-export function buildSubagentToolAllowlist(effectiveTools?: string): string | null {
+export function buildSubagentToolAllowlist(
+  effectiveTools?: string,
+  deniedTools: ReadonlySet<string> = new Set(),
+): string | null {
   const requested = (effectiveTools ?? "")
     .split(",")
     .map((tool) => tool.trim())
@@ -18,6 +27,9 @@ export function buildSubagentToolAllowlist(effectiveTools?: string): string | nu
   if (requested.length === 0) return null;
 
   const allow = new Set(requested);
+  for (const tool of SUBAGENT_SPAWNING_TOOLS) {
+    if (!deniedTools.has(tool)) allow.add(tool);
+  }
   for (const tool of SUBAGENT_CONTROL_TOOLS) {
     allow.add(tool);
   }
@@ -82,9 +94,16 @@ export class PiHarnessDriver implements HarnessDriver {
 
     const parts: string[] = ["pi"];
     parts.push("--session", shellQuote(subagentSessionFile));
+    // Explicitly load the child extension set so an installed parent version cannot
+    // register the same tools first and prevent this version from starting.
+    parts.push("--no-extensions");
 
+    const subagentsExtensionPath = join(subagentsDir, "index.ts");
     const subagentDonePath = join(subagentsDir, "subagent-done.ts");
+    const openaiPriorityPath = join(subagentsDir, "openai-priority.ts");
+    parts.push("-e", shellQuote(subagentsExtensionPath));
     parts.push("-e", shellQuote(subagentDonePath));
+    parts.push("-e", shellQuote(openaiPriorityPath));
 
     if (effectiveModel) {
       parts.push("--model", shellQuote(effectiveModel));
@@ -109,7 +128,7 @@ export class PiHarnessDriver implements HarnessDriver {
     }
 
     const effectiveTools = params.tools ?? agentDefs?.tools;
-    const toolAllowlist = buildSubagentToolAllowlist(effectiveTools);
+    const toolAllowlist = buildSubagentToolAllowlist(effectiveTools, denySet);
     if (toolAllowlist) {
       parts.push("--tools", shellQuote(toolAllowlist));
     }
