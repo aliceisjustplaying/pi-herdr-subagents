@@ -109,7 +109,7 @@ function buildSubagentRoutingGuidelines(
   agentCatalog?: string,
 ): string[] {
   return [
-    "Choose the named agent whose description most closely matches the task; do not use one agent as a generic default.",
+    "Default to a bare spawn: write the task (and, if useful, systemPrompt, tools or skills) for the job at hand. Use a named agent only when one listed below clearly fits.",
     "Omit model and thinking when invoking a named agent so its configured defaults apply. Passing either field is an explicit one-off override and takes precedence over agent frontmatter.",
     "For a bare spawn, omit model and thinking to inherit the parent runtime.",
     "When an intentional runtime override is necessary, prefer changing thinking before changing models: minimal/low for bounded mechanical work, medium for ordinary implementation or review, and high+ for architecture, concurrency, security, or hard diagnosis.",
@@ -209,7 +209,7 @@ interface AgentDefaults {
   disableModelInvocation?: boolean;
 }
 
-type AgentSource = "package" | "global" | "project";
+type AgentSource = "global" | "project";
 
 interface AgentDefinition extends AgentDefaults {
   name: string;
@@ -259,10 +259,6 @@ function resolveDenyTools(agentDefs: AgentDefaults | null): Set<string> {
 /** Resolve the global agent config directory, respecting PI_CODING_AGENT_DIR. */
 function getAgentConfigDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
-}
-
-function getBundledAgentsDir(): string {
-  return join(SUBAGENTS_DIR, "../../agents");
 }
 
 function getFrontmatterValue(frontmatter: string, key: string): string | undefined {
@@ -329,7 +325,6 @@ function parseAgentDefinition(content: string, fallbackName: string): AgentDefin
 function discoverAgentDefinitions(): ListedAgentDefinition[] {
   const agents = new Map<string, ListedAgentDefinition>();
   const dirs: Array<{ path: string; source: AgentSource }> = [
-    { path: getBundledAgentsDir(), source: "package" },
     { path: join(getAgentConfigDir(), "agents"), source: "global" },
     { path: join(process.cwd(), ".pi", "agents"), source: "project" },
   ];
@@ -362,7 +357,7 @@ function buildAvailableAgentCatalog(
   const sorted = [...agents].sort((a, b) => a.name.localeCompare(b.name));
   const visible = sorted.slice(0, limit);
   const lines = [
-    "Available named subagents (choose by role; omit model/thinking to use agent defaults):",
+    "Available named subagents (omit model/thinking to use agent defaults):",
   ];
 
   for (const agent of visible) {
@@ -2328,25 +2323,5 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         return ["", ...box.render(width)];
       },
     };
-  });
-
-  // /plan command — start the full planning workflow
-  pi.registerCommand("plan", {
-    description: "Start a planning session: /plan <what to build>",
-    handler: async (args, ctx) => {
-      const task = args.trim();
-      if (!task) {
-        ctx.ui.notify("Usage: /plan <what to build>", "warning");
-        return;
-      }
-
-      // Load the plan skill from the subagents extension directory
-      const planSkillPath = join(SUBAGENTS_DIR, "plan-skill.md");
-      let content = readFileSync(planSkillPath, "utf8");
-      content = content.replace(/^---\n[\s\S]*?\n---\n*/, "");
-      pi.sendUserMessage(
-        `<skill name="plan" location="${planSkillPath}">\n${content.trim()}\n</skill>\n\n${task}`,
-      );
-    },
   });
 }

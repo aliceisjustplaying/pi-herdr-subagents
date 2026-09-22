@@ -1122,27 +1122,10 @@ describe("subagent discovery", () => {
     );
   });
 
-  it("bundled agents inherit the parent runtime and preserve interaction modes", async () => {
+  it("ships no bundled agent presets", async () => {
     await withIsolatedAgentEnv(() => {
-      const expectedInteraction = {
-        scout: false,
-        worker: false,
-        reviewer: false,
-        planner: true,
-        "visual-tester": false,
-      } as const;
-
-      for (const [name, interactive] of Object.entries(expectedInteraction)) {
-        const defs = testApi.loadAgentDefaults(name);
-        assert.ok(defs, `expected bundled agent ${name} to be discoverable`);
-        assert.equal(defs.model, undefined, `${name} should inherit the parent model`);
-        assert.equal(defs.thinking, undefined, `${name} should inherit the parent thinking level`);
-        assert.equal(defs.spawning, undefined, `${name} should permit nested dispatch by default`);
-        assert.equal(
-          testApi.resolveEffectiveInteractive({ name, task: "" }, defs),
-          interactive,
-          `${name} should preserve its interaction mode`,
-        );
+      for (const name of ["scout", "worker", "reviewer", "planner", "visual-tester"]) {
+        assert.equal(testApi.loadAgentDefaults(name), null, `${name} should not be bundled`);
       }
     });
   });
@@ -2092,6 +2075,8 @@ describe("tool registration", () => {
 
       const guidance = subagent.promptGuidelines.join("\n");
       assert.match(guidance, /Available named subagents/);
+      assert.match(guidance, /Default to a bare spawn/);
+      assert.doesNotMatch(guidance, /\[package/);
       assert.match(
         guidance,
         /researcher.*Researches external topics using authoritative sources/,

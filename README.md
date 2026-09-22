@@ -8,16 +8,16 @@ Call `subagent()` and it **returns immediately**. The sub-agent runs in its own 
 
 ```
 ╭─ Subagents ──────────────────── 1 active · 1 open ─╮
-│ 00:23  Scout: Auth (scout)        active · bash 7m │
-│ 00:45  Scout: DB (scout)                waiting 2m │
+│ 00:23  Map auth                   active · bash 7m │
+│ 00:45  Map DB schema                    waiting 2m │
 ╰────────────────────────────────────────────────────╯
 ```
 
 For parallel execution, just call `subagent` multiple times — they all run concurrently:
 
 ```typescript
-subagent({ name: "Scout: Auth", agent: "scout", task: "Analyze auth module" });
-subagent({ name: "Scout: DB", agent: "scout", task: "Map database schema" });
+subagent({ name: "Map auth", task: "Analyze the auth module and report its entry points" });
+subagent({ name: "Map DB schema", task: "Map the database schema and its migrations" });
 // Both return immediately, results steer back independently
 ```
 
@@ -84,25 +84,14 @@ Subagent tabs and panes are created without stealing keyboard focus. Launch comm
 
 | Command                    | Description                          |
 | -------------------------- | ------------------------------------ |
-| `/plan`                    | Start a full planning workflow       |
 | `/iterate`                 | Fork into a subagent for quick fixes |
 | `/subagent <agent> <task>` | Spawn a named agent directly         |
 
-### Bundled Agents
+### No Bundled Agents
 
-| Agent             | Default runtime       | Role                                                                                     |
-| ----------------- | --------------------- | ---------------------------------------------------------------------------------------- |
-| **planner**       | Config, then parent   | Brainstorming — clarifies requirements, explores approaches, writes plans, creates todos |
-| **scout**         | Config, then parent   | Fast codebase reconnaissance — maps files, patterns, conventions                         |
-| **worker**        | Config, then parent   | Implements tasks from todos — writes code, runs tests, makes polished commits            |
-| **reviewer**      | Config, then parent   | Reviews code for bugs, security issues, correctness                                      |
-| **visual-tester** | Config, then parent   | Visual QA via Chrome CDP — screenshots, responsive testing, interaction testing          |
+This fork ships no preset agents. By default, the orchestrator writes a bare spawn for the job at hand, supplying `task` and optionally `systemPrompt`, `tools` or `skills`. If you want reusable named agents, define them yourself (see [Custom Agents](#custom-agents)). Discovery priority is **project-local** (`.pi/agents/`) > **global** (`~/.pi/agent/agents/`). The discovered names, descriptions and runtime defaults are included in the subagent tool guidance.
 
-All bundled Pi agents can recursively dispatch other agents. Explicit native-tool allowlists retain the four subagent lifecycle tools unless agent frontmatter denies them with `spawning: false` or `deny-tools`.
-
-Bundled agents use model defaults from `config.json` when configured; otherwise they inherit the parent model. Thinking defaults still come from agent frontmatter or the parent level. For a named agent, callers should omit `model` and `thinking` so those configured defaults apply. Passing either field explicitly is a one-off override and takes precedence over agent frontmatter.
-
-Agent discovery follows priority: **project-local** (`.pi/agents/`) > **global** (`~/.pi/agent/agents/`) > **package-bundled**. Override any bundled agent by placing your own version in the higher-priority location. The discovered names, descriptions, and runtime defaults are included in the subagent tool guidance so the orchestrator can select by role instead of treating one agent as a generic default.
+Named agents use model defaults from `config.json` when configured; otherwise they inherit the parent model. For a named agent, callers should omit `model` and `thinking` so those configured defaults apply. Passing either field explicitly is a one-off override and takes precedence over agent frontmatter.
 
 ### Supported Harness CLIs
 
@@ -213,14 +202,15 @@ The copyable example is model-neutral, so it works without requiring credentials
 ## Spawning Subagents
 
 ```typescript
-// Named agent with defaults from agent definition or config.json
-subagent({ name: "Scout", agent: "scout", task: "Analyze the codebase..." });
+// Bare spawn — the default: describe the job directly
+subagent({ name: "Auth audit", task: "Analyze the auth module...", systemPrompt: "You are a security reviewer..." });
+
+// Named agent (one you defined) with defaults from its definition or config.json
+subagent({ name: "Research", agent: "researcher", task: "Find the current docs for..." });
 
 // Force a full-context fork for this spawn
 subagent({ name: "Iterate", fork: true, task: "Fix the bug where..." });
 
-// Agent defaults can choose a different session-mode via frontmatter
-subagent({ name: "Planner", agent: "planner", task: "Work through the design with me" });
 
 // Custom working directory
 subagent({ name: "Designer", agent: "game-designer", cwd: "agents/game-designer", task: "..." });
@@ -296,26 +286,6 @@ await caller_ping({
 
 ---
 
-## The `/plan` Workflow
-
-The `/plan` command orchestrates a full planning-to-implementation pipeline.
-
-```
-/plan Add a dark mode toggle to the settings page
-```
-
-```
-Phase 1: Investigation    → Quick codebase scan
-Phase 2: Planning         → Interactive planner subagent (user collaborates)
-Phase 3: Review Plan      → Confirm todos, adjust if needed
-Phase 4: Execute          → Scout + sequential workers implement todos
-Phase 5: Review           → Reviewer subagent checks all changes
-```
-
-The parent workspace and tab names stay unchanged. Subagents are created in newly named tabs or panes for each phase.
-
----
-
 ## The `/iterate` Workflow
 
 For quick, focused work without polluting the main session's context.
@@ -368,7 +338,7 @@ You are a specialized agent that does X...
 
 ---
 
-Discovery still resolves precedence before visibility filtering. If a project-local hidden agent has the same name as a visible global or bundled agent, the hidden project agent wins and the lower-precedence agent does not appear in `subagents_list`.
+Discovery still resolves precedence before visibility filtering. If a project-local hidden agent has the same name as a visible global agent, the hidden project agent wins and the lower-precedence agent does not appear in `subagents_list`.
 
 ### `session-mode`
 
@@ -441,7 +411,7 @@ subagent({ name: "Scout", agent: "scout", interactive: true, task: "..." });
 
 ## Recursive Dispatch and OpenAI Service Tiers
 
-By default, every bundled Pi sub-agent can spawn further sub-agents. Native-tool allowlists such as `tools: read, bash` automatically retain `subagent`, `subagent_interrupt`, `subagents_list`, and `subagent_resume`, so limiting coding tools does not accidentally disable delegation.
+By default, every Pi sub-agent can spawn further sub-agents. Native-tool allowlists such as `tools: read, bash` automatically retain `subagent`, `subagent_interrupt`, `subagents_list`, and `subagent_resume`, so limiting coding tools does not accidentally disable delegation.
 
 Fresh and resumed Pi children use `service_tier: "default"` for the `openai` and `openai-codex` providers unless the dispatch explicitly sets `fast: true`. This per-dispatch choice overrides an enabled global Fast Mode extension:
 
