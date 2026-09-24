@@ -802,6 +802,20 @@ function renderSubagentWidgetLines(agents: RunningSubagent[], width: number): st
 }
 
 function updateWidget() {
+  try {
+    renderWidget();
+  } catch (error) {
+    // The captured ctx goes stale after /reload or session replacement; drop it
+    // and wait for the next session_start to provide a fresh one.
+    if (error instanceof Error && /stale/i.test(error.message)) {
+      runtime.latestCtx = undefined;
+      return;
+    }
+    throw error;
+  }
+}
+
+function renderWidget() {
   const latestCtx = runtime.latestCtx;
   if (!latestCtx?.hasUI) return;
 
@@ -1459,6 +1473,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
   // Clean up on session shutdown
   pi.on("session_shutdown", (event, _ctx) => {
+    runtime.latestCtx = undefined;
     if (widgetInterval) {
       clearInterval(widgetInterval);
       widgetInterval = null;
