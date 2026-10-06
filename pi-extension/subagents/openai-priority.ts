@@ -33,6 +33,9 @@ export function applyOpenAIServiceTier(
 }
 
 export default function openAIServiceTierExtension(pi: ExtensionAPI): void {
+  // T3 owns orchestration and provider settings in its hosted Pi sessions.
+  if (process.env.T3_PI_RUNTIME_MODE !== undefined) return;
+
   pi.on("before_provider_request", (event, ctx) =>
     applyOpenAIServiceTier(
       ctx.model,

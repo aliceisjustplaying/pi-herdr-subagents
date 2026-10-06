@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import * as subagentsModule from "../pi-extension/subagents/index.ts";
+import openAIServiceTierExtension from "../pi-extension/subagents/openai-priority.ts";
 import {
   cleanupSubagentsForShutdown,
   selectCompletionApi,
@@ -3296,4 +3297,27 @@ describe("subagent inbox", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+// A T3-hosted Pi session must expose only its host's orchestration surface.
+describe("T3 host isolation", () => {
+  for (const [name, extension] of [
+    ["subagents", subagentsModule.default],
+    ["service tier", openAIServiceTierExtension],
+  ] as const) {
+    it("registers no " + name + " capabilities inside T3", () => {
+      const previous = process.env.T3_PI_RUNTIME_MODE;
+      try {
+        process.env.T3_PI_RUNTIME_MODE = "full-access";
+        const mock = createMockExtensionApi();
+        extension(mock.api);
+        assert.equal(mock.registeredTools.length, 0);
+        assert.equal(mock.registeredCommands.length, 0);
+        assert.equal(mock.registeredMessageRenderers.length, 0);
+        assert.equal(mock.eventHandlers.size, 0);
+      } finally {
+        restoreEnvVar("T3_PI_RUNTIME_MODE", previous);
+      }
+    });
+  }
 });

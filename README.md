@@ -2,6 +2,8 @@
 
 Async subagents for [pi](https://github.com/badlogic/pi-mono) running exclusively in [herdr](https://herdr.dev). Spawn, orchestrate, and manage recursive sub-agent sessions in dedicated herdr tabs or panes. **Fully non-blocking** — the main agent keeps working while subagents run in the background. Pi-backed OpenAI and OpenAI-Codex children use the standard service tier by default and can opt into priority processing per dispatch with `fast: true`.
 
+When Pi runs inside T3 Code (`T3_PI_RUNTIME_MODE` is set), this package registers no tools, commands or hooks. T3 provides its own delegation tools.
+
 ## How It Works
 
 Call `subagent()` and it **returns immediately**. The sub-agent runs in its own terminal pane. A live widget above the input shows all tracked agents with their projected state — for example `starting`, `active`, `waiting`, `interrupted`, `stalled`, `running`, or `finalizing`. The header summarizes **active** (processing) vs **open** (not processing). When every tracked subagent is open, the border switches to amber. When a sub-agent finishes, its result is **steered back** into the main session as an async notification — triggering a new turn so the agent can process it.

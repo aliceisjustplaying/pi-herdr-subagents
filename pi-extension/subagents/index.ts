@@ -1481,6 +1481,9 @@ async function watchSubagent(
 }
 
 export default function subagentsExtension(pi: ExtensionAPI) {
+  // T3 owns orchestration and provider settings in its hosted Pi sessions.
+  if (process.env.T3_PI_RUNTIME_MODE !== undefined) return;
+
   runtime.pi = pi;
 
   // Capture the UI context for widget updates and restore presentation for
