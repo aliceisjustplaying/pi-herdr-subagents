@@ -15,7 +15,8 @@ import { homedir } from "node:os";
 import {
   isTerminalAvailable,
   terminalSetupHint,
-  createSubagentPane,
+  createSubagentSurface,
+  resolveSubagentLayout,
   runScriptInPane,
   closePane,
   interruptPane,
@@ -819,7 +820,15 @@ function updateWidget() {
 
 function renderWidget() {
   const latestCtx = runtime.latestCtx;
-  if (!latestCtx?.hasUI) return;
+  if (!latestCtx) return;
+  try {
+    if (!latestCtx.hasUI) return;
+  } catch {
+    // Ctx went stale (session replacement / reload) mid-flight. Drop it and
+    // wait for the next session_start to install a fresh one.
+    runtime.latestCtx = undefined;
+    return;
+  }
 
   if (runningSubagents.size === 0) {
     latestCtx.ui.setWidget("subagent-status", undefined);
@@ -1215,7 +1224,7 @@ async function launchSubagent(
   driver.validateRuntimePlan?.(runtimePlan, parentThinking);
 
   const surfacePreCreated = !!options?.surface;
-  const surface = options?.surface ?? createSubagentPane(params.name);
+  const surface = options?.surface ?? createSubagentSurface(params.name, resolveSubagentLayout());
   if (params.task) {
     setPaneTask(surface, params.task);
   }
@@ -1508,6 +1517,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
   // Clean up on session shutdown
   pi.on("session_shutdown", (event, _ctx) => {
+    // Preserved watchers must not touch a ctx that is about to go stale.
     runtime.latestCtx = undefined;
     if (widgetInterval) {
       clearInterval(widgetInterval);
@@ -2029,7 +2039,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         // Record entry count before resuming so we can extract new messages
         const entryCountBefore = getNewEntries(params.sessionPath, 0).length;
 
-        const surface = createSubagentPane(name);
+        const surface = createSubagentSurface(name, resolveSubagentLayout());
         if (params.message) {
           setPaneTask(surface, params.message);
         }

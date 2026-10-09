@@ -39,12 +39,12 @@ export function shouldAutoExitOnAgentEnd(
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (msg?.role === "assistant") {
-        return msg.stopReason !== "aborted";
+        return msg.stopReason === "stop" || msg.stopReason === "error";
       }
     }
   }
 
-  return true;
+  return false;
 }
 
 export interface SubagentErrorInfo {

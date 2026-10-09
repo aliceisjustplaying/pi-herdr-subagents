@@ -143,12 +143,12 @@ export function createHerdrSurface(name: string): string {
   return paneId;
 }
 
-export function createHerdrSurfaceSplit(
-  name: string,
+function buildPaneSplitArgs(
+  parentPaneId: string,
   direction: "right" | "down",
-): string {
-  const parentPaneId = getHerdrParentPaneId();
-  const output = herdrExec([
+  cwd: string,
+): string[] {
+  return [
     "pane",
     "split",
     parentPaneId,
@@ -156,8 +156,16 @@ export function createHerdrSurfaceSplit(
     direction,
     "--no-focus",
     "--cwd",
-    process.cwd(),
-  ]);
+    cwd,
+  ];
+}
+
+export function createHerdrSurfaceSplit(
+  name: string,
+  direction: "right" | "down",
+): string {
+  const parentPaneId = getHerdrParentPaneId();
+  const output = herdrExec(buildPaneSplitArgs(parentPaneId, direction, process.cwd()));
   const paneId = extractHerdrPaneId(output, "pane split");
   try {
     herdrExec(["pane", "rename", paneId, name]);
@@ -253,8 +261,19 @@ export function sendHerdrEscape(surface: string): void {
   herdrExec(["pane", "send-keys", surface, "Escape"]);
 }
 
+function isPaneMissingError(error: any): boolean {
+  return parsePaneGetError(error).kind === "missing";
+}
+
 export function closeHerdrSurface(surface: string): void {
-  herdrExec(["pane", "close", surface]);
+  try {
+    herdrExec(["pane", "close", surface]);
+  } catch (error: any) {
+    // Closing a pane is cleanup. If the pane already disappeared (for example,
+    // after an interrupt or manual close), the desired end state is satisfied.
+    if (isPaneMissingError(error)) return;
+    throw error;
+  }
 }
 
 export function renameHerdrTab(title: string): void {
@@ -300,10 +319,12 @@ export function reportHerdrPaneTask(
 
 export const __herdrTest__ = {
   buildTabCreateArgs,
+  buildPaneSplitArgs,
   buildPaneReportTaskArgs,
   parseHerdrJson,
   extractHerdrPaneId,
   extractHerdrRootPaneId,
   parsePaneGetOutput,
   parsePaneGetError,
+  isPaneMissingError,
 };
